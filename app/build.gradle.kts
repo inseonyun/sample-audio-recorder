@@ -1,3 +1,5 @@
+import com.android.build.gradle.internal.cxx.configure.gradleLocalProperties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -15,6 +17,10 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        val localProperties = gradleLocalProperties(rootDir, providers)
+        buildConfigField("String", "BASE_URL_GROQ", localProperties.getProperty("BASE_URL_GROQ"))
+        buildConfigField("String", "GROQ_KEY", localProperties.getProperty("GROQ_KEY"))
     }
 
     buildTypes {
