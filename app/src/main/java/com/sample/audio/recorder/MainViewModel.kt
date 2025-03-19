@@ -21,7 +21,6 @@ class MainViewModel @Inject constructor(
     val mainState: StateFlow<MainState> = _mainState.asStateFlow()
 
     init {
-        create()
         collectSTTState()
     }
 
@@ -37,7 +36,7 @@ class MainViewModel @Inject constructor(
         }
     }
 
-    private fun create() {
+    fun create() {
         viewModelScope.launch(Dispatchers.IO) {
             sttUseCase.create()
         }

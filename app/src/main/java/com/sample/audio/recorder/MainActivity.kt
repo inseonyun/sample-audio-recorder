@@ -12,6 +12,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.sample.audio.recorder.databinding.ActivityMainBinding
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
@@ -27,6 +28,7 @@ class MainActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         setBinding()
+        setSTTOnClick()
         checkPermission()
         collectMainState()
     }
@@ -34,6 +36,16 @@ class MainActivity : AppCompatActivity() {
     private fun setBinding() {
         binding.vm = viewModel
         binding.lifecycleOwner = this
+    }
+
+    private fun setSTTOnClick() {
+        binding.btnMainGroq.setOnClickListener {
+            lifecycleScope.launch {
+                viewModel.create()
+                delay(300)
+                viewModel.start()
+            }
+        }
     }
 
     private fun checkPermission() {
