@@ -30,28 +30,43 @@ class GroqSTT @Inject constructor(
     private var recordingJob: Job? = null
     private var silenceJob: Job? = null
 
+    private var audioFile: File? = null
+
     @SuppressLint("NewApi")
     override suspend fun create() {
         try {
-            mediaRecorder = MediaRecorder(context).apply {
+            audioFile = getOutputFile()
+
+            mediaRecorder = MediaRecorder().apply {
+                setAudioEncodingBitRate(AUDIO_BIT_RATE)
+                setAudioSamplingRate(AUDIO_SAMPLE_RATE)
                 setAudioSource(MediaRecorder.AudioSource.MIC)
                 setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
                 setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
-                setOutputFile(getOutputFile())
+                setOutputFile(audioFile?.absolutePath)
             }
+            Log.i("VoiceRecorder", "MediaRecorder is Created")
         } catch (e: Exception) {
             Log.e("VoiceRecorder", "MediaRecorder create ERROR: ${e.message}")
             state.send(STTState.Error(e.message.toString()))
         }
     }
 
-    private fun getOutputFile(): File = File.createTempFile(FILE_NAME, FILE_TYPE, context.cacheDir)
+    private fun getOutputFile(): File = File(context.cacheDir, FILE_NAME + FILE_TYPE).apply {
+        if (exists()) removeFile(this)
+        createNewFile()
+    }
+
+    private fun removeFile(file: File? = audioFile) {
+        file?.delete()
+    }
 
     override suspend fun start() {
         try {
             mediaRecorder?.let {
                 it.prepare()
                 it.start()
+                Log.i("VoiceRecorder", "MediaRecorder is Started")
             }
             recordingJob = CoroutineScope(Dispatchers.IO).launch {
                 delay(MAX_RECORDING_TIME) // Recording to MAX TIME
@@ -65,14 +80,25 @@ class GroqSTT @Inject constructor(
     }
 
     private fun detectSilence() {
+        silenceJob?.cancel()
+
         silenceJob = CoroutineScope(Dispatchers.IO).launch {
             var lastAmplitude = getAmplitude()
             while (isActive) {
-                delay(500)
+                delay(500L)
                 val currentAmplitude = getAmplitude()
-                if (currentAmplitude < 2000 && lastAmplitude < 2000) {
-                    delay(1000)
-                    if (getAmplitude() < 2000) {
+                if (currentAmplitude < SILENCE_AMPLITUDE_CONDITION && lastAmplitude < SILENCE_AMPLITUDE_CONDITION) {
+                    var isSilence = true
+                    for (i in 1..10) {
+                        delay(TIME_AMPLITUDE_MEASUREMENT)
+
+                        if (getAmplitude() > SILENCE_AMPLITUDE_CONDITION) {
+                            isSilence = false
+                            break
+                        }
+                    }
+
+                    if (isSilence) {
                         end()
                         break
                     }
@@ -97,11 +123,14 @@ class GroqSTT @Inject constructor(
     override suspend fun end() {
         mediaRecorder?.apply {
             stop()
+            reset()
             release()
         }
         mediaRecorder = null
         recordingJob?.cancel()
         silenceJob?.cancel()
+
+        Log.i("VoiceRecorder", "MediaRecorder is Ended")
 
         CoroutineScope(Dispatchers.IO).launch {
             try {
@@ -120,19 +149,23 @@ class GroqSTT @Inject constructor(
     }
 
     private fun getMultipartBody(): MultipartBody.Part {
-        val file = getOutputFile()
-        val requestFile = file.asRequestBody(FILE_MEDIA_TYPE)
-        return MultipartBody.Part.createFormData(FILE_MULTIPART_NAME, file.name, requestFile)
+        val requestFile = audioFile!!.asRequestBody(FILE_MEDIA_TYPE)
+        return MultipartBody.Part.createFormData(FILE_MULTIPART_NAME, audioFile!!.name, requestFile)
     }
 
     companion object {
+        private const val AUDIO_SAMPLE_RATE = 16000
+        private const val AUDIO_BIT_RATE = 12800
+
+        private const val TIME_AMPLITUDE_MEASUREMENT = 100L
+        private const val SILENCE_AMPLITUDE_CONDITION = 2000
+
         private const val FILE_NAME = "AUDIO_RECORD"
         private const val FILE_TYPE = ".wav"
         private val FILE_MEDIA_TYPE = "audio/wav".toMediaTypeOrNull()
         private const val FILE_MULTIPART_NAME = "file"
 
-        private val MODEL_MULTIPART = MultipartBody.Part.createFormData("model", "whisper-large-v3")
-
+        private val MODEL_MULTIPART = MultipartBody.Part.createFormData("model", "whisper-large-v3-turbo")
 
         private const val MAX_RECORDING_TIME = 15000L
     }
