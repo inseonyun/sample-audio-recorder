@@ -155,7 +155,7 @@ class GroqSTT @Inject constructor(
 
     companion object {
         private const val AUDIO_SAMPLE_RATE = 16000
-        private const val AUDIO_BIT_RATE = 12800
+        private const val AUDIO_BIT_RATE = 44100
 
         private const val TIME_AMPLITUDE_MEASUREMENT = 100L
         private const val SILENCE_AMPLITUDE_CONDITION = 2000
