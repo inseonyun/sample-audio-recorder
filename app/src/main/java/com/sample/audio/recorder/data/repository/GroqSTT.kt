@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.media.MediaRecorder
 import android.util.Log
+import com.sample.audio.recorder.data.api.STTApi
 import com.sample.audio.recorder.model.STTState
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
@@ -13,13 +14,16 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.asRequestBody
 import java.io.File
 import javax.inject.Inject
 
 class GroqSTT @Inject constructor(
     @ApplicationContext private val context: Context,
     state: Channel<STTState>,
-    private val apiCallback: suspend (File) -> Unit
+    private val sttApi: STTApi,
 ) : VoiceRecorder(state) {
     private var mediaRecorder: MediaRecorder? = null
 
@@ -81,12 +85,54 @@ class GroqSTT @Inject constructor(
     private fun getAmplitude(): Int = mediaRecorder?.maxAmplitude ?: 0
 
     override fun cancel() {
-        TODO("Not yet implemented")
+        mediaRecorder?.apply {
+            stop()
+            release()
+        }
+        mediaRecorder = null
+        recordingJob?.cancel()
+        silenceJob?.cancel()
+    }
+
+    override suspend fun end() {
+        mediaRecorder?.apply {
+            stop()
+            release()
+        }
+        mediaRecorder = null
+        recordingJob?.cancel()
+        silenceJob?.cancel()
+
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val sttResponse = sttApi.getGroqSTT(getMultipartBody(), MODEL_MULTIPART)
+
+                if (sttResponse.text.isBlank()) {
+                    state.send(STTState.TimeOut)
+                } else {
+                    state.send(STTState.Success(sttResponse.text))
+                }
+            } catch (e: Exception) {
+                Log.e("VoiceRecorder", "STT ERROR: ${e.message}")
+                state.send(STTState.Error(e.message.toString()))
+            }
+        }
+    }
+
+    private fun getMultipartBody(): MultipartBody.Part {
+        val file = getOutputFile()
+        val requestFile = file.asRequestBody(FILE_MEDIA_TYPE)
+        return MultipartBody.Part.createFormData(FILE_MULTIPART_NAME, file.name, requestFile)
     }
 
     companion object {
         private const val FILE_NAME = "AUDIO_RECORD"
         private const val FILE_TYPE = ".wav"
+        private val FILE_MEDIA_TYPE = "audio/wav".toMediaTypeOrNull()
+        private const val FILE_MULTIPART_NAME = "file"
+
+        private val MODEL_MULTIPART = MultipartBody.Part.createFormData("model", "whisper-large-v3")
+
 
         private const val MAX_RECORDING_TIME = 15000L
     }
