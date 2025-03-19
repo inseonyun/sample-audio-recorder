@@ -1,8 +1,12 @@
 package com.sample.audio.recorder
 
+import android.content.pm.PackageManager
 import android.os.Bundle
+import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
@@ -23,12 +27,23 @@ class MainActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         setBinding()
+        checkPermission()
         collectMainState()
     }
 
     private fun setBinding() {
         binding.vm = viewModel
         binding.lifecycleOwner = this
+    }
+
+    private fun checkPermission() {
+        requestPermission(
+            "권한이 거절 되었습니다.",
+        ).launch(
+            getDeniedPermissions(
+                RequirePermissions.entries.map { it.manifestPermission }.toTypedArray(),
+            ),
+        )
     }
 
     private fun collectMainState() {
@@ -53,6 +68,35 @@ class MainActivity : AppCompatActivity() {
             }
         }
     }
+
+    private fun checkDeniedPermissions(permissions: Array<String>) =
+        permissions
+            .map { type -> getPermissionStatus(type) to type }
+            .filter { !it.first }
+            .map { it.first }.toTypedArray()
+
+    private fun getDeniedPermissions(permissions: Array<String>) =
+        permissions
+            .map { type -> getPermissionStatus(type) to type }
+            .filter { !it.first }
+            .map { it.second }.toTypedArray()
+
+    private fun requestPermission(deniedPermissionMessage: String) =
+        registerForActivityResult(
+            ActivityResultContracts.RequestMultiplePermissions()
+        ) { permissions ->
+            val hasDeniedPermission =
+                checkDeniedPermissions(permissions.entries.map { it.key }.toTypedArray()).any { !it }
+            if (hasDeniedPermission)
+                Toast.makeText(this, deniedPermissionMessage, Toast.LENGTH_SHORT).show()
+        }
+
+
+    private fun getPermissionStatus(permissionType: String): Boolean =
+        ContextCompat.checkSelfPermission(
+            this,
+            permissionType,
+        ) == PackageManager.PERMISSION_GRANTED
 
     override fun onPause() {
         super.onPause()
